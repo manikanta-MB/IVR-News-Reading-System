@@ -3,6 +3,7 @@ const Vonage = require("@vonage/server-sdk");
 const express = require("express");
 const morgan = require("morgan");
 const { getInputAction, getTalkAction } = require("./ncco_actions");
+const { fetchNews } = require("./fetchNews");
 const {
   initializeUserInfo,
   sendResponse,
@@ -27,6 +28,7 @@ app.use(express.json());
 
 // Global Variables
 
+let news = {};
 let userInfo = {};
 let conversationIdToMobileNumber = {};
 let remoteUrl = "https://88b9-160-238-72-105.ngrok.io/";
@@ -56,6 +58,9 @@ let speechRateDecrements = {
   slow: "x-slow",
   "x-slow": "x-slow",
 };
+
+// Fetching Latest News
+fetchNews(news, __dirname + "\\The Hindu paper.html");
 
 app.get("/call", (req, res) => {
   let ncco = [];
@@ -135,18 +140,18 @@ app.post("/main_menu_input", (req, res) => {
       case "1":
         if (!userInfo[to]["currentArticle"]) {
           userInfo[to]["currentArticle"] =
-            "Haryana cabinet nod for anti-conversion bill";
+            news["06-February-2022"]["articleList"][0];
         }
         userInfo[to][
           "mainMenuOptions"
         ][1] = `To start reading the ${userInfo[to]["currentArticle"]} Article again, press 1.`;
-        startTalk(vonage, userInfo, to);
+        startTalk(news, vonage, userInfo, to, userInfo[to]["currentCategory"]);
         sendArticleReadingResponse(res, articleReadingInput);
         break;
       case "2":
         userInfo[to]["previousArticleNumber"] = 0;
         userInfo[to]["currentCategory"] = undefined;
-        getNewsArticleOptions(userInfo, to).then(
+        getNewsArticleOptions(news, userInfo, to).then(
           function (value) {
             sendResponse(
               userInfo,
@@ -163,7 +168,7 @@ app.post("/main_menu_input", (req, res) => {
         break;
       case "3":
         userInfo[to]["previousCategoryNumber"] = 0;
-        getNewsCategoryOptions(userInfo, to).then(
+        getNewsCategoryOptions(news, userInfo, to).then(
           function (value) {
             sendResponse(
               userInfo,
@@ -278,14 +283,20 @@ app.post("/article_input", (req, res) => {
           userInfo[to][
             "mainMenuOptions"
           ][1] = `To start reading the ${userInfo[to]["currentArticle"]} Article again, press 1.`;
-          startTalk(vonage, userInfo, to);
+          startTalk(
+            news,
+            vonage,
+            userInfo,
+            to,
+            userInfo[to]["currentCategory"]
+          );
           sendArticleReadingResponse(res, articleReadingInput);
         }
         break;
       case "5":
         if (userInfo[to]["articleOptionsText"].includes("press 5.")) {
           let categoryName = userInfo[to]["currentCategory"];
-          getNewsArticleOptions(userInfo, to, categoryName).then(
+          getNewsArticleOptions(news, userInfo, to, categoryName).then(
             function (value) {
               sendResponse(
                 userInfo,
@@ -405,7 +416,7 @@ app.post("/category_input", (req, res) => {
         } else {
           userInfo[to]["previousArticleNumber"] = 0;
           userInfo[to]["currentCategory"] = categoryName;
-          getNewsArticleOptions(userInfo, to, categoryName).then(
+          getNewsArticleOptions(news, userInfo, to, categoryName).then(
             function (value) {
               sendResponse(
                 userInfo,
@@ -424,7 +435,7 @@ app.post("/category_input", (req, res) => {
         break;
       case "5":
         if (userInfo[to]["categoryOptionsText"].includes("press 5.")) {
-          getNewsCategoryOptions(userInfo, to).then(
+          getNewsCategoryOptions(news, userInfo, to).then(
             function (value) {
               sendResponse(
                 userInfo,
@@ -513,12 +524,12 @@ app.post("/request_category", (req, res) => {
     let spokenData = requestObj.speech.results[0].text;
     console.log("requested Category Name ", spokenData);
     let to = requestObj.to;
-    checkCategoryExistency(spokenData).then(
+    checkCategoryExistency(news, spokenData).then(
       function (categoryName) {
         if (categoryName) {
           userInfo[to]["previousArticleNumber"] = 0;
           userInfo[to]["currentCategory"] = categoryName;
-          getNewsArticleOptions(userInfo, to, categoryName).then(
+          getNewsArticleOptions(news, userInfo, to, categoryName).then(
             function (value) {
               sendResponse(
                 userInfo,

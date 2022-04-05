@@ -7,6 +7,9 @@ function fetchNews(news, newsPaperPath) {
   const newsPaperHeading = document.querySelector("h1").textContent.trim();
   const newsPaperName = newsPaperHeading.split(" | ")[0];
   const newsPaperDate = newsPaperHeading.split(" | ")[1];
+  // if (fs.existsSync(`./News/${newsPaperName}/${newsPaperDate}`)) {
+  //   return;
+  // }
   const newsCategories = document.querySelectorAll("nav#TOC > ul > li");
   var newsArticles = document.querySelectorAll("h2");
   var index = 0;

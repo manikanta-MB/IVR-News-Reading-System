@@ -31,7 +31,7 @@ app.use(express.json());
 let news = {};
 let userInfo = {};
 let conversationIdToMobileNumber = {};
-let remoteUrl = "https://88b9-160-238-72-105.ngrok.io/";
+let remoteUrl = "https://c0b9-160-238-73-53.ngrok.io/";
 let mainMenuInputAction = getInputAction(remoteUrl, "main_menu_input");
 let mainMenuOptions = [
   "To increment speech Rate, press star. To decrement speech Rate, press ash. ",
@@ -60,59 +60,52 @@ let speechRateDecrements = {
 };
 
 // Fetching Latest News
+console.log("fetching news ...");
 fetchNews(news, __dirname + "\\The Hindu paper.html");
+console.log("successfully fetched the news");
 
-app.get("/call", (req, res) => {
+/*      Answering to an Inbound Call         */
+
+app.post("/answer", (req, res) => {
+  console.log(req.body);
+  const userPhoneNumber = req.body.from;
   let ncco = [];
-  let to = req.query.to || process.env.TO_NUMBER;
   ncco.push(
     getTalkAction(
       userInfo,
       "This is a news reading system, currently reading 'the Hindu' newspaper.",
-      to,
+      userPhoneNumber,
       false
     )
   );
-  if (userInfo.hasOwnProperty(to)) {
+  if (userInfo.hasOwnProperty(userPhoneNumber)) {
     ncco.push(
-      getTalkAction(userInfo, userInfo[to]["mainMenuOptions"].join(""), to)
+      getTalkAction(
+        userInfo,
+        userInfo[userPhoneNumber]["mainMenuOptions"].join(""),
+        userPhoneNumber
+      )
     );
   } else {
-    ncco.push(getTalkAction(userInfo, mainMenuOptions.join(""), to));
+    ncco.push(
+      getTalkAction(userInfo, mainMenuOptions.join(""), userPhoneNumber)
+    );
   }
   ncco.push(mainMenuInputAction);
-  vonage.calls.create(
-    {
-      to: [
-        {
-          type: "phone",
-          number: req.query.to || process.env.TO_NUMBER,
-        },
-      ],
-      from: {
-        type: "phone",
-        number: process.env.VONAGE_NUMBER,
-      },
-      ncco: ncco,
-    },
-    (err, resp) => {
-      if (err) console.error(err);
-      if (resp) console.log(resp);
-    }
-  );
-  res.send("<h1>Call was made</h1>");
+  res.json(ncco);
 });
 
 app.post("/event", (req, res) => {
   let body = req.body;
   console.log(body);
-  let to = body.to;
+  let userPhoneNumber = body.from;
   if (body.status == "answered") {
-    conversationIdToMobileNumber[body.conversation_uuid] = to;
-    if (!userInfo.hasOwnProperty(to)) {
-      initializeUserInfo(userInfo, to, body.uuid);
+    conversationIdToMobileNumber[body.conversation_uuid] = userPhoneNumber;
+    if (!userInfo.hasOwnProperty(userPhoneNumber)) {
+      initializeUserInfo(userInfo, userPhoneNumber, body.uuid);
+      console.log("initialized user Info");
     } else {
-      userInfo[to]["uuid"] = body.uuid;
+      userInfo[userPhoneNumber]["uuid"] = body.uuid;
     }
   }
   res.status(200).send("");
@@ -125,40 +118,47 @@ app.post("/main_menu_input", (req, res) => {
   console.log(responseObject);
   let entered_digit = responseObject.dtmf.digits;
   if (entered_digit == "") {
-    let to = conversationIdToMobileNumber[responseObject.conversation_uuid];
+    let userPhoneNumber =
+      conversationIdToMobileNumber[responseObject.conversation_uuid];
     sendResponse(
       userInfo,
-      to,
+      userPhoneNumber,
       res,
       mainMenuInputAction,
-      userInfo[to]["mainMenuOptions"].join(""),
+      userInfo[userPhoneNumber]["mainMenuOptions"].join(""),
       "Sorry, you have not chosen any option."
     );
   } else {
-    let to = responseObject.to;
+    let userPhoneNumber = responseObject.from;
     switch (entered_digit) {
       case "1":
-        if (!userInfo[to]["currentArticle"]) {
-          userInfo[to]["currentArticle"] =
-            news["06-February-2022"]["articleList"][0];
+        if (!userInfo[userPhoneNumber]["currentArticle"]) {
+          userInfo[userPhoneNumber]["currentArticle"] =
+            news["09-February-2022"]["articleList"][0];
         }
-        userInfo[to][
+        userInfo[userPhoneNumber][
           "mainMenuOptions"
-        ][1] = `To start reading the ${userInfo[to]["currentArticle"]} Article again, press 1.`;
-        startTalk(news, vonage, userInfo, to, userInfo[to]["currentCategory"]);
+        ][1] = `To start reading the ${userInfo[userPhoneNumber]["currentArticle"]} Article again, press 1.`;
+        startTalk(
+          news,
+          vonage,
+          userInfo,
+          userPhoneNumber,
+          userInfo[userPhoneNumber]["currentCategory"]
+        );
         sendArticleReadingResponse(res, articleReadingInput);
         break;
       case "2":
-        userInfo[to]["previousArticleNumber"] = 0;
-        userInfo[to]["currentCategory"] = undefined;
-        getNewsArticleOptions(news, userInfo, to).then(
+        userInfo[userPhoneNumber]["previousArticleNumber"] = 0;
+        userInfo[userPhoneNumber]["currentCategory"] = undefined;
+        getNewsArticleOptions(news, userInfo, userPhoneNumber).then(
           function (value) {
             sendResponse(
               userInfo,
-              to,
+              userPhoneNumber,
               res,
               articleInput,
-              userInfo[to]["articleOptionsText"]
+              userInfo[userPhoneNumber]["articleOptionsText"]
             );
           },
           function (err) {
@@ -167,15 +167,15 @@ app.post("/main_menu_input", (req, res) => {
         );
         break;
       case "3":
-        userInfo[to]["previousCategoryNumber"] = 0;
-        getNewsCategoryOptions(news, userInfo, to).then(
+        userInfo[userPhoneNumber]["previousCategoryNumber"] = 0;
+        getNewsCategoryOptions(news, userInfo, userPhoneNumber).then(
           function (value) {
             sendResponse(
               userInfo,
-              to,
+              userPhoneNumber,
               res,
               categoryInput,
-              userInfo[to]["categoryOptionsText"]
+              userInfo[userPhoneNumber]["categoryOptionsText"]
             );
           },
           function (err) {
@@ -186,7 +186,7 @@ app.post("/main_menu_input", (req, res) => {
       case "4":
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           requestCategoryInput,
           "speak out the Category Name",
@@ -197,10 +197,10 @@ app.post("/main_menu_input", (req, res) => {
       case "8":
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           mainMenuInputAction,
-          userInfo[to]["mainMenuOptions"].join("")
+          userInfo[userPhoneNumber]["mainMenuOptions"].join("")
         );
         break;
       case "9":
@@ -209,36 +209,36 @@ app.post("/main_menu_input", (req, res) => {
         });
         break;
       case "*":
-        userInfo[to]["speechRate"] =
-          speechRateIncrements[userInfo[to]["speechRate"]];
+        userInfo[userPhoneNumber]["speechRate"] =
+          speechRateIncrements[userInfo[userPhoneNumber]["speechRate"]];
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           mainMenuInputAction,
-          userInfo[to]["mainMenuOptions"].join(""),
-          `Current SpeechRate was set to ${userInfo[to]["speechRate"]}.`
+          userInfo[userPhoneNumber]["mainMenuOptions"].join(""),
+          `Current SpeechRate was set to ${userInfo[userPhoneNumber]["speechRate"]}.`
         );
         break;
       case "#":
-        userInfo[to]["speechRate"] =
-          speechRateDecrements[userInfo[to]["speechRate"]];
+        userInfo[userPhoneNumber]["speechRate"] =
+          speechRateDecrements[userInfo[userPhoneNumber]["speechRate"]];
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           mainMenuInputAction,
-          userInfo[to]["mainMenuOptions"].join(""),
-          `Current SpeechRate was set to ${userInfo[to]["speechRate"]}.`
+          userInfo[userPhoneNumber]["mainMenuOptions"].join(""),
+          `Current SpeechRate was set to ${userInfo[userPhoneNumber]["speechRate"]}.`
         );
         break;
       default:
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           mainMenuInputAction,
-          userInfo[to]["mainMenuOptions"].join(""),
+          userInfo[userPhoneNumber]["mainMenuOptions"].join(""),
           "sorry, you have chosen an invalid option"
         );
         break;
@@ -252,58 +252,69 @@ app.post("/article_input", (req, res) => {
   let responseObject = req.body;
   let entered_digit = responseObject.dtmf.digits;
   if (entered_digit == "") {
-    let to = conversationIdToMobileNumber[responseObject.conversation_uuid];
+    let userPhoneNumber =
+      conversationIdToMobileNumber[responseObject.conversation_uuid];
     sendResponse(
       userInfo,
-      to,
+      userPhoneNumber,
       res,
       articleInput,
-      userInfo[to]["articleOptionsText"],
+      userInfo[userPhoneNumber]["articleOptionsText"],
       "Sorry, You have not chosen any option."
     );
   } else {
-    let to = responseObject.to;
+    let userPhoneNumber = responseObject.from;
     switch (entered_digit) {
       case "1":
       case "2":
       case "3":
       case "4":
-        if (userInfo[to]["articleOptions"][entered_digit] == undefined) {
+        if (
+          userInfo[userPhoneNumber]["articleOptions"][entered_digit] ==
+          undefined
+        ) {
           sendResponse(
             userInfo,
-            to,
+            userPhoneNumber,
             res,
             articleInput,
-            userInfo[to]["articleOptionsText"],
+            userInfo[userPhoneNumber]["articleOptionsText"],
             "sorry, you have chosen invalid option."
           );
         } else {
-          userInfo[to]["currentArticle"] =
-            userInfo[to]["articleOptions"][entered_digit];
-          userInfo[to][
+          userInfo[userPhoneNumber]["currentArticle"] =
+            userInfo[userPhoneNumber]["articleOptions"][entered_digit];
+          userInfo[userPhoneNumber][
             "mainMenuOptions"
-          ][1] = `To start reading the ${userInfo[to]["currentArticle"]} Article again, press 1.`;
+          ][1] = `To start reading the ${userInfo[userPhoneNumber]["currentArticle"]} Article again, press 1.`;
           startTalk(
             news,
             vonage,
             userInfo,
-            to,
-            userInfo[to]["currentCategory"]
+            userPhoneNumber,
+            userInfo[userPhoneNumber]["currentCategory"]
           );
           sendArticleReadingResponse(res, articleReadingInput);
         }
         break;
       case "5":
-        if (userInfo[to]["articleOptionsText"].includes("press 5.")) {
-          let categoryName = userInfo[to]["currentCategory"];
-          getNewsArticleOptions(news, userInfo, to, categoryName).then(
+        if (
+          userInfo[userPhoneNumber]["articleOptionsText"].includes("press 5.")
+        ) {
+          let categoryName = userInfo[userPhoneNumber]["currentCategory"];
+          getNewsArticleOptions(
+            news,
+            userInfo,
+            userPhoneNumber,
+            categoryName
+          ).then(
             function (value) {
               sendResponse(
                 userInfo,
-                to,
+                userPhoneNumber,
                 res,
                 articleInput,
-                userInfo[to]["articleOptionsText"]
+                userInfo[userPhoneNumber]["articleOptionsText"]
               );
             },
             function (err) {
@@ -313,10 +324,10 @@ app.post("/article_input", (req, res) => {
         } else {
           sendResponse(
             userInfo,
-            to,
+            userPhoneNumber,
             res,
             articleInput,
-            userInfo[to]["articleOptionsText"],
+            userInfo[userPhoneNumber]["articleOptionsText"],
             "sorry, you have chosen invalid option."
           );
         }
@@ -324,28 +335,28 @@ app.post("/article_input", (req, res) => {
       case "8":
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           articleInput,
-          userInfo[to]["articleOptionsText"]
+          userInfo[userPhoneNumber]["articleOptionsText"]
         );
         break;
       case "9":
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           mainMenuInputAction,
-          userInfo[to]["mainMenuOptions"].join("")
+          userInfo[userPhoneNumber]["mainMenuOptions"].join("")
         );
         break;
       default:
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           articleInput,
-          userInfo[to]["articleOptionsText"],
+          userInfo[userPhoneNumber]["articleOptionsText"],
           "sorry, you have chosen invalid option."
         );
         break;
@@ -361,17 +372,17 @@ app.post("/article_reading", (req, res) => {
     // let to = conversationIdToMobileNumber[responseObject.conversation_uuid]
     sendArticleReadingResponse(res, articleReadingInput);
   } else {
-    let to = responseObject.to;
+    let userPhoneNumber = responseObject.from;
     switch (entered_digit) {
       case "9":
-        stopTalk(vonage, userInfo, to);
+        stopTalk(vonage, userInfo, userPhoneNumber);
         setTimeout(() => {
           sendResponse(
             userInfo,
-            to,
+            userPhoneNumber,
             res,
             mainMenuInputAction,
-            userInfo[to]["mainMenuOptions"].join("")
+            userInfo[userPhoneNumber]["mainMenuOptions"].join("")
           );
         }, 2000);
         break;
@@ -386,44 +397,51 @@ app.post("/category_input", (req, res) => {
   let entered_digit = responseObject.dtmf.digits;
 
   if (entered_digit == "") {
-    let to = conversationIdToMobileNumber[responseObject.conversation_uuid];
+    let userPhoneNumber =
+      conversationIdToMobileNumber[responseObject.conversation_uuid];
     sendResponse(
       userInfo,
-      to,
+      userPhoneNumber,
       res,
       categoryInput,
-      userInfo[to]["categoryOptionsText"],
+      userInfo[userPhoneNumber]["categoryOptionsText"],
       "Sorry, you have not chosen any option."
     );
   } else {
-    let to = responseObject.to;
+    let userPhoneNumber = responseObject.from;
     let ncco = [];
     switch (entered_digit) {
       case "1":
       case "2":
       case "3":
       case "4":
-        let categoryName = userInfo[to]["categoryOptions"][entered_digit];
+        let categoryName =
+          userInfo[userPhoneNumber]["categoryOptions"][entered_digit];
         if (categoryName == undefined) {
           sendResponse(
             userInfo,
-            to,
+            userPhoneNumber,
             res,
             categoryInput,
-            userInfo[to]["categoryOptionsText"],
+            userInfo[userPhoneNumber]["categoryOptionsText"],
             "sorry, you have chosen invalid option."
           );
         } else {
-          userInfo[to]["previousArticleNumber"] = 0;
-          userInfo[to]["currentCategory"] = categoryName;
-          getNewsArticleOptions(news, userInfo, to, categoryName).then(
+          userInfo[userPhoneNumber]["previousArticleNumber"] = 0;
+          userInfo[userPhoneNumber]["currentCategory"] = categoryName;
+          getNewsArticleOptions(
+            news,
+            userInfo,
+            userPhoneNumber,
+            categoryName
+          ).then(
             function (value) {
               sendResponse(
                 userInfo,
-                to,
+                userPhoneNumber,
                 res,
                 articleInput,
-                userInfo[to]["articleOptionsText"],
+                userInfo[userPhoneNumber]["articleOptionsText"],
                 `you are in ${categoryName} Category. `
               );
             },
@@ -434,15 +452,17 @@ app.post("/category_input", (req, res) => {
         }
         break;
       case "5":
-        if (userInfo[to]["categoryOptionsText"].includes("press 5.")) {
-          getNewsCategoryOptions(news, userInfo, to).then(
+        if (
+          userInfo[userPhoneNumber]["categoryOptionsText"].includes("press 5.")
+        ) {
+          getNewsCategoryOptions(news, userInfo, userPhoneNumber).then(
             function (value) {
               sendResponse(
                 userInfo,
-                to,
+                userPhoneNumber,
                 res,
                 categoryInput,
-                userInfo[to]["categoryOptionsText"]
+                userInfo[userPhoneNumber]["categoryOptionsText"]
               );
             },
             function (err) {
@@ -452,10 +472,10 @@ app.post("/category_input", (req, res) => {
         } else {
           sendResponse(
             userInfo,
-            to,
+            userPhoneNumber,
             res,
             categoryInput,
-            userInfo[to]["categoryOptionsText"],
+            userInfo[userPhoneNumber]["categoryOptionsText"],
             "sorry, you have chosen invalid option."
           );
         }
@@ -463,28 +483,28 @@ app.post("/category_input", (req, res) => {
       case "8":
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           categoryInput,
-          userInfo[to]["categoryOptionsText"]
+          userInfo[userPhoneNumber]["categoryOptionsText"]
         );
         break;
       case "9":
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           mainMenuInputAction,
-          userInfo[to]["mainMenuOptions"].join("")
+          userInfo[userPhoneNumber]["mainMenuOptions"].join("")
         );
         break;
       default:
         sendResponse(
           userInfo,
-          to,
+          userPhoneNumber,
           res,
           categoryInput,
-          userInfo[to]["categoryOptionsText"],
+          userInfo[userPhoneNumber]["categoryOptionsText"],
           "sorry, you have chosen invalid option."
         );
         break;
@@ -495,10 +515,11 @@ app.post("/category_input", (req, res) => {
 app.post("/request_category", (req, res) => {
   let requestObj = req.body;
   if (requestObj.speech.timeout_reason == "start_timeout") {
-    let to = conversationIdToMobileNumber[requestObj.conversation_uuid];
+    let userPhoneNumber =
+      conversationIdToMobileNumber[requestObj.conversation_uuid];
     sendResponse(
       userInfo,
-      to,
+      userPhoneNumber,
       res,
       requestCategoryInput,
       "Sorry, you have not spoken anything.Please Speak out the Category Name",
@@ -510,10 +531,11 @@ app.post("/request_category", (req, res) => {
     !requestObj.speech.results ||
     requestObj.speech.results.length == 0
   ) {
-    let to = conversationIdToMobileNumber[requestObj.conversation_uuid];
+    let userPhoneNumber =
+      conversationIdToMobileNumber[requestObj.conversation_uuid];
     sendResponse(
       userInfo,
-      to,
+      userPhoneNumber,
       res,
       requestCategoryInput,
       "Sorry, we are not able to analyze your voice, please speak out again.",
@@ -523,20 +545,25 @@ app.post("/request_category", (req, res) => {
   } else {
     let spokenData = requestObj.speech.results[0].text;
     console.log("requested Category Name ", spokenData);
-    let to = requestObj.to;
+    let userPhoneNumber = requestObj.from;
     checkCategoryExistency(news, spokenData).then(
       function (categoryName) {
         if (categoryName) {
-          userInfo[to]["previousArticleNumber"] = 0;
-          userInfo[to]["currentCategory"] = categoryName;
-          getNewsArticleOptions(news, userInfo, to, categoryName).then(
+          userInfo[userPhoneNumber]["previousArticleNumber"] = 0;
+          userInfo[userPhoneNumber]["currentCategory"] = categoryName;
+          getNewsArticleOptions(
+            news,
+            userInfo,
+            userPhoneNumber,
+            categoryName
+          ).then(
             function (value) {
               sendResponse(
                 userInfo,
-                to,
+                userPhoneNumber,
                 res,
                 articleInput,
-                userInfo[to]["articleOptionsText"],
+                userInfo[userPhoneNumber]["articleOptionsText"],
                 `you are in ${categoryName} Category. `
               );
             },
@@ -547,7 +574,7 @@ app.post("/request_category", (req, res) => {
         } else {
           sendResponse(
             userInfo,
-            to,
+            userPhoneNumber,
             res,
             requestCategoryInput,
             "Sorry, you have requested an invalid category.Please request a valid Category.",
@@ -561,22 +588,6 @@ app.post("/request_category", (req, res) => {
       }
     );
   }
-});
-
-/*      Answering to an Inbound Call         */
-
-app.post("/answer", (req, res) => {
-  console.log(req.body);
-  const number = req.body.from.split("").join(" ");
-  const ncco = [
-    {
-      action: "talk",
-      text: "Thank you for calling from " + number,
-      language: "en-IN",
-      style: "4",
-    },
-  ];
-  res.json(ncco);
 });
 
 app.listen(process.env.PORT, () =>
